@@ -1,5 +1,5 @@
 diff --git a/src/backend/access/transam/xact.c b/src/backend/access/transam/xact.c
-index 03c553e7ea..81e1df27ef 100644
+index 9cd0b7c11b..5449446884 100644
 --- a/src/backend/access/transam/xact.c
 +++ b/src/backend/access/transam/xact.c
 @@ -314,6 +314,9 @@ typedef struct SubXactCallbackItem
@@ -23,52 +23,53 @@ index 03c553e7ea..81e1df27ef 100644
  
  /*
 diff --git a/src/backend/tcop/postgres.c b/src/backend/tcop/postgres.c
-index 7c5f7c775b..3fff54ff51 100644
+index 3679799e50..3ed8cb3f94 100644
 --- a/src/backend/tcop/postgres.c
 +++ b/src/backend/tcop/postgres.c
-@@ -192,6 +192,14 @@ static void log_disconnections(int code, Datum arg);
+@@ -192,6 +192,12 @@ static void log_disconnections(int code, Datum arg);
  static void enable_statement_timeout(void);
  static void disable_statement_timeout(void);
  
 +/*
-+ * Hook for plugins to get control at end/start of
-+ * start_xact_command/finish_xact_command. The hook
-+ * on start_xact_command might be useless as it happens
-+ * before UtilityProccess and the Executor* hooks.
++ * Hooks for plugins to get control at end/start of
++ * start_xact_command()/finish_xact_command().
 + */
 +XactCommandStart_hook_type start_xact_command_hook = NULL;
 +XactCommandFinish_hook_type finish_xact_command_hook = NULL;
  
  /* ----------------------------------------------------------------
   *		routines to obtain user input
-@@ -2634,6 +2642,7 @@ exec_describe_portal_message(const char *portal_name)
- static void
- start_xact_command(void)
- {
-+
- 	if (!xact_started)
- 	{
- 		StartTransactionCommand();
-@@ -2649,11 +2658,19 @@ start_xact_command(void)
+@@ -2649,8 +2655,16 @@ start_xact_command(void)
  	 * not desired, the timeout has to be disabled explicitly.
  	 */
  	enable_statement_timeout();
 +
++	/*
++	 * Now give loadable modules a chance to execute code before a transaction
++	 * command is processed.
++	 */
 +	if (start_xact_command_hook)
 +		(*start_xact_command_hook) ();
-+
  }
  
 +
  static void
  finish_xact_command(void)
  {
-+	if (finish_xact_command_hook)
-+		(*finish_xact_command_hook) ();
-+
- 	/* cancel active statement timeout after each command */
- 	disable_statement_timeout();
+@@ -2659,6 +2673,13 @@ finish_xact_command(void)
  
+ 	if (xact_started)
+ 	{
++		/*
++		 * Now give loadable modules a chance to execute code just before a
++		 * transaction command is committed.
++		 */
++		if (finish_xact_command_hook)
++			(*finish_xact_command_hook) ();
++
+ 		CommitTransactionCommand();
+ 
+ #ifdef MEMORY_CONTEXT_CHECKING
 diff --git a/src/include/access/xact.h b/src/include/access/xact.h
 index 7320de345c..2e866b2a91 100644
 --- a/src/include/access/xact.h
@@ -98,7 +99,7 @@ index 437642cc72..a8bef2f639 100644
 +
  #endif							/* PQUERY_H */
 diff --git a/src/tools/pgindent/typedefs.list b/src/tools/pgindent/typedefs.list
-index fde701bfd4..23ddca9891 100644
+index 04464c2e76..ec28a4c914 100644
 --- a/src/tools/pgindent/typedefs.list
 +++ b/src/tools/pgindent/typedefs.list
 @@ -13,6 +13,7 @@ A_Expr_Kind
@@ -109,7 +110,7 @@ index fde701bfd4..23ddca9891 100644
  AbsoluteTime
  AccessMethodInfo
  AccessPriv
-@@ -2794,6 +2795,8 @@ XPVIV
+@@ -2793,6 +2794,8 @@ XPVIV
  XPVMG
  XactCallback
  XactCallbackItem
