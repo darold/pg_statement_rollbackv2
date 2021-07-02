@@ -1,5 +1,11 @@
+commit 972021470a78dab551f0a8b9e36398425df46c46
+Author: Gilles Darold <gilles@darold.net>
+Date:   Fri Jul 2 15:06:43 2021 +0200
+
+    Add hook to start/end xact commands
+
 diff --git a/src/backend/access/transam/xact.c b/src/backend/access/transam/xact.c
-index 9cd0b7c11b..5449446884 100644
+index 6395a9b240..8f1bc3431a 100644
 --- a/src/backend/access/transam/xact.c
 +++ b/src/backend/access/transam/xact.c
 @@ -314,6 +314,9 @@ typedef struct SubXactCallbackItem
@@ -12,7 +18,7 @@ index 9cd0b7c11b..5449446884 100644
  /* local function prototypes */
  static void AssignTransactionId(TransactionState s);
  static void AbortTransaction(void);
-@@ -3358,6 +3361,9 @@ AbortCurrentTransaction(void)
+@@ -3382,6 +3385,9 @@ AbortCurrentTransaction(void)
  			AbortCurrentTransaction();
  			break;
  	}
@@ -23,10 +29,10 @@ index 9cd0b7c11b..5449446884 100644
  
  /*
 diff --git a/src/backend/tcop/postgres.c b/src/backend/tcop/postgres.c
-index 3679799e50..3ed8cb3f94 100644
+index 2b1b68109f..1f7382d182 100644
 --- a/src/backend/tcop/postgres.c
 +++ b/src/backend/tcop/postgres.c
-@@ -192,6 +192,12 @@ static void log_disconnections(int code, Datum arg);
+@@ -205,6 +205,12 @@ static void log_disconnections(int code, Datum arg);
  static void enable_statement_timeout(void);
  static void disable_statement_timeout(void);
  
@@ -39,7 +45,7 @@ index 3679799e50..3ed8cb3f94 100644
  
  /* ----------------------------------------------------------------
   *		routines to obtain user input
-@@ -2649,8 +2655,16 @@ start_xact_command(void)
+@@ -2671,8 +2677,16 @@ start_xact_command(void)
  	 * not desired, the timeout has to be disabled explicitly.
  	 */
  	enable_statement_timeout();
@@ -56,7 +62,7 @@ index 3679799e50..3ed8cb3f94 100644
  static void
  finish_xact_command(void)
  {
-@@ -2659,6 +2673,13 @@ finish_xact_command(void)
+@@ -2681,6 +2695,13 @@ finish_xact_command(void)
  
  	if (xact_started)
  	{
@@ -71,12 +77,12 @@ index 3679799e50..3ed8cb3f94 100644
  
  #ifdef MEMORY_CONTEXT_CHECKING
 diff --git a/src/include/access/xact.h b/src/include/access/xact.h
-index 7320de345c..2e866b2a91 100644
+index 34cfaf542c..6c1273bb44 100644
 --- a/src/include/access/xact.h
 +++ b/src/include/access/xact.h
-@@ -467,4 +467,8 @@ extern void EnterParallelMode(void);
- extern void ExitParallelMode(void);
- extern bool IsInParallelMode(void);
+@@ -482,4 +482,8 @@ IsModifySupportedInParallelMode(CmdType commandType)
+ 	return (commandType == CMD_INSERT);
+ }
  
 +/* Hook for plugins to get control in start_xact_command() and finish_xact_command() */
 +typedef void (*AbortCurrentTransaction_hook_type) (void);
@@ -84,7 +90,7 @@ index 7320de345c..2e866b2a91 100644
 +
  #endif							/* XACT_H */
 diff --git a/src/include/tcop/pquery.h b/src/include/tcop/pquery.h
-index 437642cc72..a8bef2f639 100644
+index ed2c4d374b..91c663358a 100644
 --- a/src/include/tcop/pquery.h
 +++ b/src/include/tcop/pquery.h
 @@ -42,4 +42,10 @@ extern uint64 PortalRunFetch(Portal portal,
@@ -99,7 +105,7 @@ index 437642cc72..a8bef2f639 100644
 +
  #endif							/* PQUERY_H */
 diff --git a/src/tools/pgindent/typedefs.list b/src/tools/pgindent/typedefs.list
-index 04464c2e76..ec28a4c914 100644
+index 1d1d5d2f0e..29cd5acbff 100644
 --- a/src/tools/pgindent/typedefs.list
 +++ b/src/tools/pgindent/typedefs.list
 @@ -13,6 +13,7 @@ A_Expr_Kind
@@ -110,7 +116,7 @@ index 04464c2e76..ec28a4c914 100644
  AbsoluteTime
  AccessMethodInfo
  AccessPriv
-@@ -2793,6 +2794,8 @@ XPVIV
+@@ -2821,6 +2822,8 @@ XPVIV
  XPVMG
  XactCallback
  XactCallbackItem
