@@ -74,13 +74,9 @@ static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static XactCommandStart_hook_type prev_XactCommandStart = NULL;
-static XactCommandFinish_hook_type prev_XactCommandFinish = NULL;
-static AbortCurrentTransaction_hook_type prev_AbortCurrentTransaction = NULL;
 
 /* Functions used with hooks */
 static void slr_start_xact_command(void);
-static void slr_finish_xact_command(void);
-static void slr_abort_current_transaction(void);
 static void slr_ExecutorEnd(QueryDesc *queryDesc);
 static void slr_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction,
 #if PG_VERSION_NUM >= 90600
@@ -100,6 +96,8 @@ static PlannedStmt* slr_planner(SLR_PLANNERHOOK_PROTO);
 void	_PG_init(void);
 void	_PG_fini(void);
 bool slr_is_write_query(QueryDesc *queryDesc);
+static void slr_subxact_callback(SubXactEvent event, SubTransactionId mySubid,
+					   SubTransactionId parentSubid, void *arg);
 
 /* Global variables for automatic savepoint */
 bool    slr_enabled        = true;
@@ -134,14 +132,8 @@ _PG_init(void)
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = slr_ProcessUtility;
 
-        prev_XactCommandStart = start_xact_command_hook;
+	prev_XactCommandStart = start_xact_command_hook;
 	start_xact_command_hook = slr_start_xact_command;
-
-        prev_XactCommandFinish = finish_xact_command_hook;
-	finish_xact_command_hook = slr_finish_xact_command;
-
-        prev_AbortCurrentTransaction = abort_current_transaction_hook;
-	abort_current_transaction_hook = slr_abort_current_transaction;
 
 	/*
 	 * Automatic savepoint
@@ -159,6 +151,8 @@ _PG_init(void)
 		NULL,           /* No assign hook */
 		NULL            /* No show hook */
 	);
+
+	RegisterSubXactCallback(slr_subxact_callback, NULL);
 }
 
 /*
@@ -174,8 +168,6 @@ _PG_fini(void)
 	ExecutorEnd_hook = prev_ExecutorEnd;
 	ProcessUtility_hook = prev_ProcessUtility;
         start_xact_command_hook = prev_XactCommandStart;
-        finish_xact_command_hook = prev_XactCommandFinish;
-        abort_current_transaction_hook = prev_AbortCurrentTransaction;
 }
 
 /* Keep track that the planner stage is fully terminated */
@@ -330,7 +322,6 @@ slr_ProcessUtility(SLR_PROCESSUTILITY_PROTO)
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
 }
 
 /*
@@ -341,7 +332,7 @@ slr_ProcessUtility(SLR_PROCESSUTILITY_PROTO)
 static void
 slr_start_xact_command()
 {
-	if (slr_enabled && slr_nest_executor_level == 0)
+	if (slr_enabled && slr_nest_executor_level == 0 && slr_xact_opened)
 	{
 		if (exec_rollbackto)
 		{
@@ -370,38 +361,6 @@ slr_start_xact_command()
 
 	if (prev_XactCommandStart)
 		prev_XactCommandStart();
-}
-
-/*
- * XactCommandFinish hook:
- * Unused for the moment.
- */
-static void
-slr_finish_xact_command()
-{
-	/* do nothing */
-	if (prev_XactCommandFinish)
-		prev_XactCommandFinish();
-
-}
-
-/*
- * AbortCurrentTransaction hook:
- * Inform slr_start_xact_command() that a ROLLBACK TO savepoint must
- * be issued before executing the next statement.
- */
-static void
-slr_abort_current_transaction()
-{
-	if (slr_enabled)
-	{
-		elog(DEBUG1, "slr_abort_current_transaction(): enable exec_rollbackto");
-		exec_rollbackto = true;
-	}
-
-	
-	if (prev_AbortCurrentTransaction)
-		prev_AbortCurrentTransaction();
 }
 
 /*
@@ -546,3 +505,27 @@ slr_is_write_query(QueryDesc *queryDesc)
 
 	return false;
 }
+
+static void
+slr_subxact_callback(SubXactEvent event, SubTransactionId mySubid,
+                                           SubTransactionId parentSubid, void *arg)
+{
+	if (!slr_enabled)
+		return;
+
+	switch (event)
+	{
+		case SUBXACT_EVENT_ABORT_SUB:
+			/*
+			 * Inform slr_start_xact_command() that a ROLLBACK TO savepoint must
+			 * be issued before executing the next statement.
+			 */
+			elog(DEBUG1, "slr_subxact_callback() - SUBXACT_EVENT_ABORT_SUB: activating exec_rollbackto");
+			exec_rollbackto = true;
+			break;
+		default:
+			break;
+	}
+
+}
+
