@@ -73,7 +73,6 @@ static ExecutorRun_hook_type prev_ExecutorRun = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
-static XactCommandStart_hook_type prev_XactCommandStart = NULL;
 
 /* Functions used with hooks */
 static void slr_start_xact_command(void);
@@ -96,6 +95,7 @@ static PlannedStmt* slr_planner(SLR_PLANNERHOOK_PROTO);
 void	_PG_init(void);
 void	_PG_fini(void);
 bool slr_is_write_query(QueryDesc *queryDesc);
+static void slr_xact_callback(XactEvent event, void *arg);
 static void slr_subxact_callback(SubXactEvent event, SubTransactionId mySubid,
 					   SubTransactionId parentSubid, void *arg);
 
@@ -132,9 +132,6 @@ _PG_init(void)
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = slr_ProcessUtility;
 
-	prev_XactCommandStart = start_xact_command_hook;
-	start_xact_command_hook = slr_start_xact_command;
-
 	/*
 	 * Automatic savepoint
 	 *
@@ -152,6 +149,7 @@ _PG_init(void)
 		NULL            /* No show hook */
 	);
 
+	RegisterXactCallback(slr_xact_callback, NULL);
 	RegisterSubXactCallback(slr_subxact_callback, NULL);
 }
 
@@ -167,7 +165,6 @@ _PG_fini(void)
 	ExecutorFinish_hook = prev_ExecutorFinish;
 	ExecutorEnd_hook = prev_ExecutorEnd;
 	ProcessUtility_hook = prev_ProcessUtility;
-        start_xact_command_hook = prev_XactCommandStart;
 }
 
 /* Keep track that the planner stage is fully terminated */
@@ -358,9 +355,6 @@ slr_start_xact_command()
 			exec_savepoint = false;
 		}
 	}
-
-	if (prev_XactCommandStart)
-		prev_XactCommandStart();
 }
 
 /*
@@ -504,6 +498,24 @@ slr_is_write_query(QueryDesc *queryDesc)
 	}
 
 	return false;
+}
+
+static void
+slr_xact_callback(XactEvent event, void *arg)
+{
+	if (!slr_enabled)
+		return;
+
+	switch (event)
+	{
+		case XACT_EVENT_COMMAND_START:
+			elog(DEBUG1, "slr_xact_callback() - XACT_EVENT_COMMAND_START: calling slr_start_xact_command()");
+			slr_start_xact_command();
+			break;
+		default:
+			break;
+	}
+
 }
 
 static void
