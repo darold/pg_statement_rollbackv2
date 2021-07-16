@@ -1,0 +1,107 @@
+diff --git a/src/backend/access/transam/xact.c b/src/backend/access/transam/xact.c
+index 441445927e..7384345a48 100644
+--- a/src/backend/access/transam/xact.c
++++ b/src/backend/access/transam/xact.c
+@@ -6118,3 +6118,27 @@ MarkSubTransactionAssigned(void)
+ 
+ 	CurrentTransactionState->assigned = true;
+ }
++
++/*
++ * CallXactStartCommand
++ *
++ * Wrapper over CallXactCallbacks called in postgres.c after the call to
++ * start_xact_command(). It allows to user-defined code to be executed
++ * for the start of any command through a xact registered callback. This
++ * function do nothing if a transaction is not started.
++ *
++ * The related XactEvent is XACT_EVENT_COMMAND_START.
++ */
++void
++CallXactStartCommand(void)
++{
++	TransactionState s = CurrentTransactionState;
++
++	if (s->blockState == TBLOCK_DEFAULT || s->blockState == TBLOCK_STARTED)
++		return;
++
++	/*
++	 * Call start-of-xact callbacks with start command event
++	 */
++	CallXactCallbacks(XACT_EVENT_COMMAND_START);
++}
+diff --git a/src/backend/tcop/postgres.c b/src/backend/tcop/postgres.c
+index 8cea10c901..97a1a19d10 100644
+--- a/src/backend/tcop/postgres.c
++++ b/src/backend/tcop/postgres.c
+@@ -989,6 +989,13 @@ exec_simple_query(const char *query_string)
+ 	 */
+ 	start_xact_command();
+ 
++	/*
++	 * Instruct registered callbacks on xact that a new command is to be
++	 * executed. It allows to execute user-defined code before any new
++	 * statement is executed.
++	 */
++	CallXactStartCommand();
++
+ 	/*
+ 	 * Zap any pre-existing unnamed statement.  (While not strictly necessary,
+ 	 * it seems best to define simple-Query mode as if it used the unnamed
+@@ -1082,6 +1089,13 @@ exec_simple_query(const char *query_string)
+ 		/* Make sure we are in a transaction command */
+ 		start_xact_command();
+ 
++		/*
++		 * Instruct registered callbacks on xact that a new command is to be
++		 * executed. It allows to execute user-defined code before any new
++		 * statement is executed.
++		 */
++		CallXactStartCommand();
++
+ 		/*
+ 		 * If using an implicit transaction block, and we're not already in a
+ 		 * transaction block, start an implicit block to force this statement
+@@ -1361,6 +1375,13 @@ exec_parse_message(const char *query_string,	/* string to execute */
+ 	 */
+ 	start_xact_command();
+ 
++	/*
++	 * Instruct registered callbacks on xact that a new command is to be
++	 * executed. It allows to execute user-defined code before any new
++	 * statement is executed.
++	 */
++	CallXactStartCommand();
++
+ 	/*
+ 	 * Switch to appropriate context for constructing parsetrees.
+ 	 *
+@@ -2708,6 +2729,7 @@ start_xact_command(void)
+ 		!get_timeout_active(CLIENT_CONNECTION_CHECK_TIMEOUT))
+ 		enable_timeout_after(CLIENT_CONNECTION_CHECK_TIMEOUT,
+ 							 client_connection_check_interval);
++
+ }
+ 
+ static void
+diff --git a/src/include/access/xact.h b/src/include/access/xact.h
+index 134f6862da..994e00e3b0 100644
+--- a/src/include/access/xact.h
++++ b/src/include/access/xact.h
+@@ -119,7 +119,8 @@ typedef enum
+ 	XACT_EVENT_PREPARE,
+ 	XACT_EVENT_PRE_COMMIT,
+ 	XACT_EVENT_PARALLEL_PRE_COMMIT,
+-	XACT_EVENT_PRE_PREPARE
++	XACT_EVENT_PRE_PREPARE,
++	XACT_EVENT_COMMAND_START
+ } XactEvent;
+ 
+ typedef void (*XactCallback) (XactEvent event, void *arg);
+@@ -467,4 +468,6 @@ extern void EnterParallelMode(void);
+ extern void ExitParallelMode(void);
+ extern bool IsInParallelMode(void);
+ 
++extern void CallXactStartCommand(void);
++
+ #endif							/* XACT_H */

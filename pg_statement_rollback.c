@@ -535,10 +535,6 @@ slr_subxact_callback(SubXactEvent event, SubTransactionId mySubid,
 			elog(DEBUG1, "slr_subxact_callback() - SUBXACT_EVENT_ABORT_SUB: activating exec_rollbackto");
 			exec_rollbackto = true;
 			break;
-		case SUBXACT_EVENT_COMMAND_START:
-			elog(DEBUG1, "slr_subxact_callback() - subXACT_EVENT_COMMAND_START: calling slr_start_xact_command()");
-			slr_start_xact_command();
-			break;
 		default:
 			break;
 	}
