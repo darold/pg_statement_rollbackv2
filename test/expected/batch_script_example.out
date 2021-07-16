@@ -1,0 +1,12 @@
+Creating the regression database.
+Connect to the regression database.
+---------------------------------------------
+Create the extension and initialize the test
+---------------------------------------------
+---------------------------------------------
+Start DML work
+---------------------------------------------
+---------------------------------------------
+Look at inserted values in DML table
+---------------------------------------------
+Expected: 6, Count:  6

@@ -21,7 +21,10 @@ TESTS        = 00_slr_simple \
 	       02_slr_release \
 	       03_slr_cursor \
 	       04_slr_write_cte \
-	       05_slr_do_block
+	       05_slr_do_block \
+	       06_slr_autocommitoff \
+	       07_slr_prepare \
+	       08_slr_where_current_of
 
 REGRESS      = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test
