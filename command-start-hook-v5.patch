@@ -1,0 +1,150 @@
+diff --git a/src/backend/tcop/postgres.c b/src/backend/tcop/postgres.c
+index 530caa520b..bc62a2cb98 100644
+--- a/src/backend/tcop/postgres.c
++++ b/src/backend/tcop/postgres.c
+@@ -207,6 +207,8 @@ static void log_disconnections(int code, Datum arg);
+ static void enable_statement_timeout(void);
+ static void disable_statement_timeout(void);
+ 
++/* Hooks for plugins to get control at end of start_xact_command() */
++XactCommandStart_hook_type start_xact_command_hook = NULL;
+ 
+ /* ----------------------------------------------------------------
+  *		routines to obtain user input
+@@ -989,6 +991,13 @@ exec_simple_query(const char *query_string)
+ 	 */
+ 	start_xact_command();
+ 
++	/*
++	 * Now give loadable modules a chance to execute code
++	 * before a transaction command is processed.
++	 */
++	if (start_xact_command_hook)
++		(*start_xact_command_hook) ();
++
+ 	/*
+ 	 * Zap any pre-existing unnamed statement.  (While not strictly necessary,
+ 	 * it seems best to define simple-Query mode as if it used the unnamed
+@@ -1082,6 +1091,13 @@ exec_simple_query(const char *query_string)
+ 		/* Make sure we are in a transaction command */
+ 		start_xact_command();
+ 
++		/*
++		 * Now give loadable modules a chance to execute code
++		 * before a transaction command is processed.
++		 */
++		if (start_xact_command_hook)
++			(*start_xact_command_hook) ();
++
+ 		/*
+ 		 * If using an implicit transaction block, and we're not already in a
+ 		 * transaction block, start an implicit block to force this statement
+@@ -1361,6 +1377,13 @@ exec_parse_message(const char *query_string,	/* string to execute */
+ 	 */
+ 	start_xact_command();
+ 
++	/*
++	 * Now give loadable modules a chance to execute code
++	 * before a transaction command is processed.
++	 */
++	if (start_xact_command_hook)
++		(*start_xact_command_hook) ();
++
+ 	/*
+ 	 * Switch to appropriate context for constructing parsetrees.
+ 	 *
+@@ -1647,6 +1670,13 @@ exec_bind_message(StringInfo input_message)
+ 	 */
+ 	start_xact_command();
+ 
++	/*
++	 * Now give loadable modules a chance to execute code
++	 * before a transaction command is processed.
++	 */
++	if (start_xact_command_hook)
++		(*start_xact_command_hook) ();
++
+ 	/* Switch back to message context */
+ 	MemoryContextSwitchTo(MessageContext);
+ 
+@@ -2140,6 +2170,13 @@ exec_execute_message(const char *portal_name, long max_rows)
+ 	 */
+ 	start_xact_command();
+ 
++	/*
++	 * Now give loadable modules a chance to execute code
++	 * before a transaction command is processed.
++	 */
++	if (start_xact_command_hook)
++		(*start_xact_command_hook) ();
++
+ 	/*
+ 	 * If we re-issue an Execute protocol request against an existing portal,
+ 	 * then we are only fetching more rows rather than completely re-executing
+@@ -2546,6 +2583,13 @@ exec_describe_statement_message(const char *stmt_name)
+ 	 */
+ 	start_xact_command();
+ 
++	/*
++	 * Now give loadable modules a chance to execute code
++	 * before a transaction command is processed.
++	 */
++	if (start_xact_command_hook)
++		(*start_xact_command_hook) ();
++
+ 	/* Switch back to message context */
+ 	MemoryContextSwitchTo(MessageContext);
+ 
+@@ -2641,6 +2685,13 @@ exec_describe_portal_message(const char *portal_name)
+ 	 */
+ 	start_xact_command();
+ 
++	/*
++	 * Now give loadable modules a chance to execute code
++	 * before a transaction command is processed.
++	 */
++	if (start_xact_command_hook)
++		(*start_xact_command_hook) ();
++
+ 	/* Switch back to message context */
+ 	MemoryContextSwitchTo(MessageContext);
+ 
+@@ -4561,6 +4612,13 @@ PostgresMain(int argc, char *argv[],
+ 				/* start an xact for this function invocation */
+ 				start_xact_command();
+ 
++				/*
++				 * Now give loadable modules a chance to execute code
++				 * before a transaction command is processed.
++				 */
++				if (start_xact_command_hook)
++					(*start_xact_command_hook) ();
++
+ 				/*
+ 				 * Note: we may at this point be inside an aborted
+ 				 * transaction.  We can't throw error for that until we've
+diff --git a/src/include/tcop/pquery.h b/src/include/tcop/pquery.h
+index 2318f04ff0..540ede42fd 100644
+--- a/src/include/tcop/pquery.h
++++ b/src/include/tcop/pquery.h
+@@ -48,4 +48,8 @@ extern bool PlannedStmtRequiresSnapshot(struct PlannedStmt *pstmt);
+ 
+ extern void EnsurePortalSnapshotExists(void);
+ 
++/* Hook for plugins to get control in start_xact_command() and finish_xact_command() */
++typedef void (*XactCommandStart_hook_type) (void);
++extern PGDLLIMPORT XactCommandStart_hook_type start_xact_command_hook;
++
+ #endif							/* PQUERY_H */
+diff --git a/src/tools/pgindent/typedefs.list b/src/tools/pgindent/typedefs.list
+index 37cf4b2f76..110541731c 100644
+--- a/src/tools/pgindent/typedefs.list
++++ b/src/tools/pgindent/typedefs.list
+@@ -2938,6 +2938,7 @@ XPVIV
+ XPVMG
+ XactCallback
+ XactCallbackItem
++XactCommandStart_hook_type
+ XactEvent
+ XactLockTableWaitInfo
+ XidBoundsViolation
