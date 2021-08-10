@@ -1,9 +1,9 @@
 ## [POC] Full server side rollback at statement level for PostgreSQL
 
 ```
-/!\ Require that patch pg_statement_rollback.c be applied to PostgreSQL source code
-    to add the necessary hooks. This is a proof od concept extension to show the
-    utility of these hooks.
+ ^  Require that patch command-start-hook-v5.patch be applied to PostgreSQL source
+/!\ code to add the necessary hooks. This is a proof od concept extension to show
+--- the utility of these hooks.
 ```
 
 * [Description](#description)
